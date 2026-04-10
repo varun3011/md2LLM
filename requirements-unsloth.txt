@@ -1,0 +1,13 @@
+# md2LLM - NVIDIA GPU Training Requirements
+# Install with: pip install -r requirements-unsloth.txt
+# Required for: training on NVIDIA GPU with CUDA
+#
+# NOTE: Install PyTorch with CUDA first before running this file.
+# See docs/gpu-setup.md for the correct PyTorch install command
+# for your specific CUDA version.
+
+unsloth>=2024.3
+trl>=0.8.0
+peft>=0.10.0
+accelerate>=0.28.0
+bitsandbytes>=0.43.0

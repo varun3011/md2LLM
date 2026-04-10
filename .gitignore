@@ -1,0 +1,80 @@
+# --- Environment - never commit real keys ------------------------
+.env
+
+# --- User generated data - never commit --------------------------
+output/*.jsonl
+output/*.json
+output/*.txt
+output/*.tmp
+
+# --- Uploaded vaults - user private data -------------------------
+uploads/
+
+# --- Trained models - too large for git --------------------------
+models/*.gguf
+models/*.bin
+models/*.safetensors
+models/*.pt
+models/*.pth
+
+# --- Training artifacts ------------------------------------------
+training/checkpoints/
+training/__pycache__/
+
+# --- Python -------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+venv/
+.venv/
+env/
+.env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+htmlcov/
+
+# --- Node / Frontend ---------------------------------------------
+node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Mac ----------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- Windows ------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- IDE ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Keep empty folders in git (placeholder files) ---------------
+!output/.gitkeep
+!models/.gitkeep
+!uploads/.gitkeep
+
+/test-vault/
+/tests
+/docs   
