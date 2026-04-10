@@ -1,0 +1,11 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "fine_tune_type": "lora",
+  "num_layers": 16,
+  "lora_parameters": {
+    "rank": 32,
+    "dropout": 0.0,
+    "scale": 64
+  },
+  "max_seq_length": 2048
+}

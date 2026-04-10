@@ -1,0 +1,30 @@
+# md2LLM Configuration
+# All values here are defaults.
+# User specific settings are set via the UI and stored per session.
+# Do not hardcode paths or API keys here.
+
+vault:
+  path: ""                    # set via UI - do not hardcode
+  min_quality: 0.4            # notes below this score are skipped
+  exclude_folders:            # folders to skip when reading vault
+    - .obsidian
+    - _templates
+    - templates
+    - attachments
+    - assets
+
+training:
+  goal: "knowledge"           # knowledge | style | reasoning | chatbot
+  model: "gpt-4o-mini"        # LLM used for training data generation
+  output_path: "output/training_data.jsonl"
+  max_notes: null             # null = process all notes
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+generation:
+  max_concurrent: 20          # parallel API calls during data generation
+  batch_size: 50              # notes per checkpoint batch
+  rate_limit_delay: 0.1       # seconds between launching coroutines
+  max_retries: 3              # retry failed API calls
