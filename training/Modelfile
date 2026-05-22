@@ -1,8 +1,6 @@
-FROM ./model.gguf
+FROM /Users/csuftitan/Desktop/ownLLM/models/qwen2.5-1.5b-instruct.Q4_K_M.gguf
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
-PARAMETER stop "<|im_end|>"
-PARAMETER stop "### Instruction:"
 
-SYSTEM """You are a personal AI assistant trained on the user's own notes and knowledge base. Answer questions based on what you have learned from their notes, speaking in first person as if you wrote those notes yourself."""
+SYSTEM You are a personal AI assistant trained on the user's notes and knowledge base. Answer questions based on what you learned from those notes.

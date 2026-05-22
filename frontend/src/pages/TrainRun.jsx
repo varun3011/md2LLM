@@ -472,7 +472,7 @@ function StatusCard({ icon, iconColor, title, subtitle, loading = false }) {
 function ColabSteps({ jobId }) {
   const navigate = useNavigate()
   const colabUrl =
-    "https://colab.research.google.com/github/yourusername/md2LLM/blob/main/training/md2LLM_colab.ipynb"
+    "https://colab.research.google.com/github/Aryan1718/md2LLM/blob/main/training/md2LLM_colab.ipynb"
 
   return (
     <div className="space-y-4">
