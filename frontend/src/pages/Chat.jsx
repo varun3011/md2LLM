@@ -5,6 +5,16 @@ import { useMd2LLM } from "../App"
 import ChatMessage from "../components/ChatMessage"
 import Layout from "../components/Layout"
 
+async function readResponse(response) {
+  const text = await response.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { detail: text }
+  }
+}
+
 export default function Chat() {
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState("")
@@ -71,12 +81,20 @@ export default function Chat() {
         body: formData,
       })
 
-      const data = await response.json()
+      const data = await readResponse(response)
       if (!response.ok) {
         throw new Error(data.detail || "Chat failed")
       }
 
-      setMessages((current) => [...current, { role: "model", content: data.response }])
+      setMessages((current) => [
+        ...current,
+        {
+          role: "model",
+          content: data.response,
+          inferenceLogId: data.inference_log_id,
+          feedback: "",
+        },
+      ])
     } catch (chatError) {
       setError(chatError.message)
     } finally {
@@ -126,7 +144,28 @@ export default function Chat() {
                 <p className="text-sm text-zinc-500">Ask your model anything.</p>
               ) : (
                 messages.map((message, index) => (
-                  <ChatMessage key={`${message.role}-${index}`} role={message.role === "model" ? "assistant" : "user"} content={message.content} />
+                  <div key={`${message.role}-${index}`} className="space-y-2">
+                    <ChatMessage role={message.role === "model" ? "assistant" : "user"} content={message.content} />
+                    {message.role === "model" && message.inferenceLogId ? (
+                      <div className="flex justify-end gap-2">
+                        {["up", "down", "flagged"].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => sendFeedback(index, value)}
+                            className={[
+                              "rounded border px-2 py-1 text-xs transition-colors",
+                              message.feedback === value
+                                ? "border-brand-500 bg-brand-600/20 text-brand-200"
+                                : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200",
+                            ].join(" ")}
+                          >
+                            {value === "up" ? "Good" : value === "down" ? "Bad" : "Flag"}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ))
               )}
               {loading ? (
@@ -177,4 +216,29 @@ export default function Chat() {
       </div>
     </Layout>
   )
+
+  async function sendFeedback(index, feedback) {
+    const message = messages[index]
+    if (!message?.inferenceLogId) return
+
+    const formData = new FormData()
+    formData.append("feedback", feedback)
+    formData.append("flagged", feedback === "flagged" ? "true" : "false")
+
+    try {
+      const response = await fetch(`/api/registry/inference-logs/${message.inferenceLogId}/feedback`, {
+        method: "POST",
+        body: formData,
+      })
+      const data = await readResponse(response)
+      if (!response.ok) throw new Error(data.detail || "Failed to save feedback")
+      setMessages((current) =>
+        current.map((item, itemIndex) =>
+          itemIndex === index ? { ...item, feedback } : item,
+        ),
+      )
+    } catch (feedbackError) {
+      setError(feedbackError.message)
+    }
+  }
 }

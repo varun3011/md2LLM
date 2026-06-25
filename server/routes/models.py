@@ -5,6 +5,7 @@ import httpx
 from fastapi import APIRouter, Form, HTTPException
 
 from server.config import MODELS_DIR, OUTPUT_DIR
+from server.services.registry import create_model
 
 router = APIRouter(prefix="/api")
 
@@ -48,6 +49,18 @@ async def _fetch_ollama_models() -> tuple[list[dict], bool]:
                     "load_command": None,
                 }
             )
+            create_model(
+                model_id=f"ollama_{name.replace(':', '_')}",
+                display_name=name,
+                base_model_repo=None,
+                training_run_id=None,
+                dataset_id=None,
+                artifact_path=None,
+                model_format="ollama",
+                readiness_status="ready",
+                deployment_status="draft",
+                tags=["ollama"],
+            )
         return models, True
     except Exception:
         return [], False
@@ -80,6 +93,18 @@ async def list_models():
                     "load_command": f"ollama run {model_file}",
                 }
             )
+            create_model(
+                model_id=f"local_{model_file.stem}",
+                display_name=model_file.stem,
+                base_model_repo=None,
+                training_run_id=None,
+                dataset_id=None,
+                artifact_path=str(model_file),
+                model_format="gguf",
+                readiness_status="ready" if already_in_ollama else "available",
+                deployment_status="draft",
+                tags=["local"],
+            )
 
     for entry in _load_custom_paths():
         raw_path = entry.get("path", "")
@@ -99,6 +124,18 @@ async def list_models():
                     "path": str(path),
                     "load_command": f"ollama run {path}",
                 }
+            )
+            create_model(
+                model_id=f"custom_{path.stem}",
+                display_name=entry.get("label") or path.stem,
+                base_model_repo=None,
+                training_run_id=None,
+                dataset_id=None,
+                artifact_path=str(path),
+                model_format="gguf",
+                readiness_status="ready" if already_in_ollama else "available",
+                deployment_status="draft",
+                tags=["custom"],
             )
         else:
             models.append(

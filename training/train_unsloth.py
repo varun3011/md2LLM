@@ -114,6 +114,7 @@ def main():
         effective_batch = batch_size * grad_accum
         steps_per_epoch = max(1, len(texts) // effective_batch)
         total_steps = steps_per_epoch * epochs
+        warmup_steps = max(1, int(total_steps * 0.05))
 
         write_progress(
             progress_file,
@@ -151,9 +152,9 @@ def main():
             gradient_accumulation_steps=grad_accum,
             learning_rate=learning_rate,
             lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
+            warmup_steps=warmup_steps,
             logging_steps=max(1, total_steps // 20),
-            save_strategy="epoch",
+            save_strategy="no",
             fp16=True,
             optim="adamw_8bit",
             seed=42,

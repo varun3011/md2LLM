@@ -4,7 +4,7 @@ Turn your markdown notes into a small local model you can chat with.
 
 `md2LLM` reads an Obsidian vault or any folder of Markdown files, scores the notes, generates fine-tuning data, recommends a training path based on your hardware, and helps you run the resulting model locally with Ollama.
 
-[Overview](#overview) • [Features](#features) • [Getting Started](#getting-started) • [Run The App](#run-the-app) • [Workflow](#workflow) • [Training Options](#training-options) • [Project Structure](#project-structure) • [Troubleshooting](#troubleshooting)
+[Overview](#overview) • [Features](#features) • [Getting Started](#getting-started) • [Run The App](#run-the-app) • [Observability](#observability-and-model-registry) • [Workflow](#workflow) • [Training Options](#training-options) • [Project Structure](#project-structure) • [Troubleshooting](#troubleshooting)
 
 > [!TIP]
 > You can use the full browser workflow, or generate `training_data.jsonl` from the CLI with `python -m pipeline.main`.
@@ -34,6 +34,46 @@ Typical flow:
 4. Pick a base model from the recommended Hugging Face repos.
 5. Fine-tune locally on Apple Silicon with MLX, on NVIDIA with Unsloth, or use the Colab fallback.
 6. Export or load the trained model and chat with it locally.
+
+## Observability And Model Registry
+
+`md2LLM` keeps a local operational registry so generated datasets, runs,
+models, evaluations, and chat telemetry can be inspected after a server restart.
+
+The registry is stored in:
+
+```text
+output/md2llm.sqlite3
+```
+
+Registry APIs:
+
+- `GET /api/registry/summary`
+- `GET /api/registry/datasets`
+- `GET /api/registry/runs`
+- `GET /api/registry/runs/{run_id}`
+- `GET /api/registry/runs/{run_id}/logs`
+- `GET /api/registry/models`
+- `GET /api/registry/models/{model_id}`
+- `POST /api/registry/models/{model_id}/status`
+- `POST /api/registry/models/{model_id}/evaluate`
+- `GET /api/registry/evaluations`
+- `GET /api/registry/evaluations/{evaluation_id}`
+- `GET /api/registry/inference-logs`
+- `POST /api/registry/inference-logs/{log_id}/feedback`
+- `GET /api/registry/compare/models?left={model_id}&right={model_id}`
+- `GET /api/registry/compare/datasets?left={dataset_id}&right={dataset_id}`
+- `GET /api/registry/compare/runs?left={run_id}&right={run_id}`
+
+Frontend pages:
+
+- `http://localhost:5173/registry`
+- `http://localhost:5173/runs/{run_id}`
+- `http://localhost:5173/models/{model_id}`
+- `http://localhost:5173/compare`
+
+Files under `output/` and `models/` remain the artifacts. The SQLite database is
+the metadata system of record for lineage, status, metrics, and relationships.
 
 ## Features
 

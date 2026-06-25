@@ -1,14 +1,16 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.config import FRONTEND_DIR
+from server.db import init_db
 from server.routes.chat import router as chat_router
 from server.routes.frontend import router as frontend_router
 from server.routes.jobs import router as jobs_router
 from server.routes.models import router as models_router
+from server.routes.registry import router as registry_router
 from server.routes.training import router as training_router
 
 app = FastAPI(title="md2LLM API", version="0.1.0")
@@ -34,6 +36,8 @@ async def startup_tasks():
     import time
 
     from server.config import OUTPUT_DIR
+
+    init_db()
 
     cutoff = time.time() - 86400
     patterns_to_clean = [
@@ -61,12 +65,29 @@ async def startup_tasks():
 app.include_router(frontend_router)
 app.include_router(jobs_router)
 app.include_router(models_router)
+app.include_router(registry_router)
 app.include_router(training_router)
 app.include_router(chat_router)
 
 dist_dir = FRONTEND_DIR / "dist"
 if dist_dir.exists() and (dist_dir / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="assets")
+
+
+@app.get("/assets/{asset_path:path}")
+async def serve_asset(asset_path: str):
+    """Serve built frontend assets even if the static mount was skipped at startup."""
+    assets_dir = (dist_dir / "assets").resolve()
+    file_path = (assets_dir / asset_path).resolve()
+
+    try:
+        file_path.relative_to(assets_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Asset not found") from exc
+
+    if file_path.is_file():
+        return FileResponse(str(file_path))
+    raise HTTPException(status_code=404, detail="Asset not found")
 
 
 @app.get("/", response_class=HTMLResponse)

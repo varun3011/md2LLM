@@ -45,25 +45,38 @@ export default function Layout({ currentStep, children, contentClassName = "max-
             </div>
           </Link>
 
-          <div
-            className="flex items-center gap-2 rounded-full border border-zinc-700/50 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-400"
-            title={apiConnected ? "API connected" : "API offline"}
-          >
-            <span
-              className={[
-                "h-2.5 w-2.5 rounded-full",
-                apiConnected === null
-                  ? "bg-zinc-600"
-                  : apiConnected
-                    ? "bg-emerald-400"
-                    : "bg-red-500",
-              ].join(" ")}
-            />
-            <span>{apiConnected ? "API online" : apiConnected === false ? "API offline" : "Checking API"}</span>
+          <div className="flex items-center gap-3">
+            <nav className="hidden items-center gap-2 text-sm text-zinc-400 sm:flex">
+              <Link to="/registry" className="rounded-lg px-2 py-1 hover:bg-zinc-900 hover:text-zinc-100">
+                Registry
+              </Link>
+              <Link to="/compare" className="rounded-lg px-2 py-1 hover:bg-zinc-900 hover:text-zinc-100">
+                Compare
+              </Link>
+              <Link to="/chat" className="rounded-lg px-2 py-1 hover:bg-zinc-900 hover:text-zinc-100">
+                Chat
+              </Link>
+            </nav>
+            <div
+              className="flex items-center gap-2 rounded-full border border-zinc-700/50 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-400"
+              title={apiConnected ? "API connected" : "API offline"}
+            >
+              <span
+                className={[
+                  "h-2.5 w-2.5 rounded-full",
+                  apiConnected === null
+                    ? "bg-zinc-600"
+                    : apiConnected
+                      ? "bg-emerald-400"
+                      : "bg-red-500",
+                ].join(" ")}
+              />
+              <span>{apiConnected ? "API online" : apiConnected === false ? "API offline" : "Checking API"}</span>
+            </div>
           </div>
         </header>
 
-        <StepIndicator currentStep={currentStep} />
+        {currentStep ? <StepIndicator currentStep={currentStep} /> : null}
 
         <main className={`mx-auto mt-8 w-full flex-1 transition-opacity duration-200 ${contentClassName}`}>
           {children}

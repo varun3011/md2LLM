@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from server.config import OUTPUT_DIR, PROJECT_ROOT, UPLOAD_DIR
 from server.services.generation import run_generation
+from server.services.registry import create_dataset, create_run
 from server.state import jobs
 from pipeline.vault_reader import (
     EXCLUDED_FOLDERS,
@@ -33,7 +34,13 @@ def _new_job_id() -> str:
     return str(uuid.uuid4())[:8]
 
 
-def _init_job(job_id: str, vault_path: str | None, md_count: int, message: str) -> dict:
+def _init_job(
+    job_id: str,
+    vault_path: str | None,
+    md_count: int,
+    message: str,
+    source_type: str,
+) -> dict:
     job = {
         "id": job_id,
         "status": "ready",
@@ -48,6 +55,7 @@ def _init_job(job_id: str, vault_path: str | None, md_count: int, message: str) 
         "goal": None,
         "md_files_found": md_count,
         "scan_stats": None,
+        "source_type": source_type,
     }
     jobs[job_id] = job
     return job
@@ -206,6 +214,7 @@ async def upload_vault(file: UploadFile = File(...)):
             vault_path=str(vault_path),
             md_count=md_count,
             message=f"Vault uploaded successfully. Found {md_count} markdown files.",
+            source_type="zip_upload",
         )
 
         return {
@@ -246,6 +255,7 @@ async def upload_vault_folder(files: list[UploadFile] = File(...)):
             vault_path=str(vault_path),
             md_count=md_count,
             message=f"Vault uploaded successfully. Found {md_count} markdown files.",
+            source_type="folder_upload",
         )
 
         return {
@@ -289,6 +299,7 @@ async def upload_training_data(file: UploadFile = File(...)):
         vault_path=None,
         md_count=0,
         message=f"Training data uploaded successfully. Found {pair_count} training pairs.",
+        source_type="imported_jsonl",
     )
     job.update(
         {
@@ -302,8 +313,26 @@ async def upload_training_data(file: UploadFile = File(...)):
         }
     )
 
+    dataset_id = f"ds_{job_id}"
+    create_dataset(
+        dataset_id=dataset_id,
+        source_type="imported_jsonl",
+        source_ref=filename,
+        generation_goal=None,
+        note_stats={"total_found": 0, "passed_filter": 0},
+        quality_threshold=None,
+        generation_provider="import",
+        generation_model=None,
+        prompt_template_version=None,
+        file_count=0,
+        pair_count=pair_count,
+        artifact_path=str(output_path),
+    )
+    job["dataset_id"] = dataset_id
+
     return {
         "job_id": job_id,
+        "dataset_id": dataset_id,
         "pair_count": pair_count,
         "output_path": str(output_path),
         "message": f"Training data uploaded successfully. Found {pair_count} training pairs.",
@@ -326,6 +355,7 @@ async def register_vault(vault_path: str = Form(...)):
         vault_path=str(root),
         md_count=md_count,
         message=f"Vault registered successfully. Found {md_count} markdown files.",
+        source_type="vault",
     )
 
     return {
@@ -365,7 +395,25 @@ async def generate(
             "output_path": output_path,
             "output_dir": str(resolved_output_dir),
             "goal": goal,
+            "min_quality": min_quality,
         }
+    )
+
+    create_run(
+        run_id=job_id,
+        run_type="dataset_generation",
+        status="running",
+        config={
+            "goal": goal,
+            "min_quality": min_quality,
+            "output_path": output_path,
+            "checkpoint_path": checkpoint_path,
+            "source_type": job.get("source_type"),
+            "vault_path": vault_path,
+        },
+        metrics={
+            "md_files_found": job.get("md_files_found", 0),
+        },
     )
 
     asyncio.create_task(

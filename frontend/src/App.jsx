@@ -7,6 +7,10 @@ import ReviewFiles from "./pages/ReviewFiles"
 import SelectModel from "./pages/SelectModel"
 import SelectVault from "./pages/SelectVault"
 import Chat from "./pages/Chat"
+import CompareModels from "./pages/CompareModels"
+import ModelDetail from "./pages/ModelDetail"
+import Registry from "./pages/Registry"
+import RunDetail from "./pages/RunDetail"
 import TrainConfig from "./pages/TrainConfig"
 import TrainRun from "./pages/TrainRun"
 import Layout from "./components/Layout"
@@ -95,6 +99,10 @@ export default function App() {
           <Route path="/train" element={<TrainPlaceholder />} />
           <Route path="/train/run" element={<TrainRun />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/registry" element={<Registry />} />
+          <Route path="/runs/:runId" element={<RunDetail />} />
+          <Route path="/models/:modelId" element={<ModelDetail />} />
+          <Route path="/compare" element={<CompareModels />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

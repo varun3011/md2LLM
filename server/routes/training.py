@@ -7,6 +7,16 @@ import httpx
 from fastapi import APIRouter, Form, HTTPException
 
 from server.config import MODELS_DIR, OUTPUT_DIR, PROJECT_ROOT
+from server.services.evaluation import run_model_evaluation
+from server.services.registry import (
+    add_run_event,
+    append_run_log,
+    create_basic_evaluation,
+    get_dataset,
+    create_model,
+    create_run,
+    update_run,
+)
 from server.state import jobs, training_jobs
 
 router = APIRouter(prefix="/api/training", tags=["training"])
@@ -1185,6 +1195,10 @@ async def start_training(session_id: str = Form(default="")):
         )
 
     job_id = str(uuid.uuid4())[:8]
+    source_job_id = config.get("job_id")
+    dataset_id = f"ds_{source_job_id}" if source_job_id else None
+    if dataset_id and not get_dataset(dataset_id):
+        dataset_id = None
 
     training_jobs[job_id] = {
         "id": job_id,
@@ -1205,6 +1219,21 @@ async def start_training(session_id: str = Form(default="")):
         "started_at": None,
         "completed_at": None,
     }
+
+    create_run(
+        run_id=job_id,
+        run_type="training",
+        status="running",
+        dataset_id=dataset_id,
+        base_model_id=config.get("hf_repo") or config.get("model_name"),
+        config=config,
+        hardware=config.get("hardware"),
+        metrics={
+            "pair_count": config.get("pair_count", 0),
+            "epochs": config.get("epochs", 0),
+            "learning_rate": config.get("learning_rate"),
+        },
+    )
 
     asyncio.create_task(_run_training(job_id, config))
 
@@ -1277,10 +1306,18 @@ async def _run_training(job_id: str, config: dict):
         )
         if progress is not None:
             training_jobs[job_id]["progress"] = progress
+        append_run_log(job_id, f"{phase}: {message}")
+        event_payload = {"phase": phase, **kwargs}
+        if progress is not None:
+            event_payload["progress"] = progress
+        add_run_event(job_id, "run.progress", message, event_payload)
 
     try:
         training_jobs[job_id]["status"] = "running"
         training_jobs[job_id]["started_at"] = time.time()
+        update_run(job_id, status="running")
+        append_run_log(job_id, "Training orchestration started")
+        add_run_event(job_id, "run.started", "Training orchestration started")
 
         update("checking_model", "Checking if model is cached locally...")
 
@@ -1303,6 +1340,8 @@ async def _run_training(job_id: str, config: dict):
                     "recommendation": recommendation,
                 }
             )
+            update_run(job_id, status="failed", error_summary="Colab required")
+            add_run_event(job_id, "run.failed", "Colab required", {"recommendation": recommendation})
             return
 
         if not hf_repo or "/" not in hf_repo:
@@ -1323,6 +1362,8 @@ async def _run_training(job_id: str, config: dict):
                     ),
                 }
             )
+            update_run(job_id, status="failed", error_summary="Colab required")
+            add_run_event(job_id, "run.failed", "Colab required")
             return
 
         update("checking_cache", "Verifying model files...")
@@ -1339,6 +1380,7 @@ async def _run_training(job_id: str, config: dict):
             )
 
             success = await loop.run_in_executor(None, _download_hf_model, hf_repo, job_id)
+            append_run_log(job_id, f"Model download {'completed' if success else 'failed'} for {hf_repo}")
 
             if not success:
                 raise ValueError(
@@ -1399,11 +1441,32 @@ async def _run_training(job_id: str, config: dict):
                             "message": prog.get("message", "Training..."),
                         }
                     )
+                    add_run_event(
+                        job_id,
+                        "run.progress",
+                        prog.get("message", "Training..."),
+                        {
+                            "phase": "training",
+                            "progress": prog.get("progress", 10),
+                            "step": prog.get("step", 0),
+                            "total_steps": prog.get("total_steps", 0),
+                            "loss": prog.get("loss"),
+                        },
+                    )
+                    append_run_log(
+                        job_id,
+                        (
+                            f"training progress={prog.get('progress', 10)} "
+                            f"step={prog.get('step', 0)}/{prog.get('total_steps', 0)} "
+                            f"loss={prog.get('loss')} message={prog.get('message', 'Training...')}"
+                        ),
+                    )
                 except Exception:
                     pass
 
         if process.returncode != 0:
             stderr = await process.stderr.read()
+            append_run_log(job_id, stderr.decode(errors="replace")[:4000])
             raise ValueError(
                 f"Training failed with exit code {process.returncode}. "
                 f"Error: {stderr.decode()[:500]}"
@@ -1418,6 +1481,46 @@ async def _run_training(job_id: str, config: dict):
         if not output_path:
             output_path = str(MODELS_DIR / config["output_name"])
 
+        artifact_path = output_path
+        if not Path(artifact_path).exists() and Path(f"{output_path}.gguf").exists():
+            artifact_path = f"{output_path}.gguf"
+
+        source_job_id = config.get("job_id")
+        dataset_id = f"ds_{source_job_id}" if source_job_id else None
+        if dataset_id and not get_dataset(dataset_id):
+            dataset_id = None
+        model_id = f"model_{config['output_name']}"
+        model = create_model(
+            model_id=model_id,
+            display_name=config["output_name"],
+            base_model_repo=hf_repo,
+            training_run_id=job_id,
+            dataset_id=dataset_id,
+            artifact_path=artifact_path,
+            model_format="gguf" if artifact_path.endswith(".gguf") else "adapter",
+            readiness_status="ready",
+            deployment_status="draft",
+            tags=["candidate"],
+        )
+        try:
+            evaluation = await run_model_evaluation(model["model_id"])
+        except Exception as exc:
+            evaluation_score = 1.0 if Path(artifact_path).exists() else 0.5
+            evaluation = create_basic_evaluation(
+                model_id=model["model_id"],
+                dataset_id=dataset_id,
+                aggregate_score=evaluation_score,
+                notes=(
+                    "Automatic metadata readiness check completed after training. "
+                    f"Prompt evaluation could not run: {exc}"
+                ),
+                scores={
+                    "artifact_present": 1.0 if Path(artifact_path).exists() else 0.0,
+                    "training_completed": 1.0,
+                    "prompt_evaluation_error": str(exc),
+                },
+            )
+
         training_jobs[job_id].update(
             {
                 "status": "complete",
@@ -1425,8 +1528,29 @@ async def _run_training(job_id: str, config: dict):
                 "progress": 100,
                 "message": f"Training complete! Model saved to {output_path}.gguf",
                 "output_path": output_path,
+                "model_id": model["model_id"],
+                "evaluation_id": evaluation["evaluation_id"],
                 "completed_at": time.time(),
             }
+        )
+        append_run_log(job_id, f"Training completed. model_id={model['model_id']} evaluation_id={evaluation['evaluation_id']}")
+        update_run(
+            job_id,
+            status="succeeded",
+            dataset_id=dataset_id,
+            output_model_id=model["model_id"],
+            metrics={
+                "progress": 100,
+                "output_path": output_path,
+                "artifact_path": artifact_path,
+                "evaluation_id": evaluation["evaluation_id"],
+            },
+        )
+        add_run_event(
+            job_id,
+            "run.completed",
+            f"Training complete. Registered model {model['model_id']}",
+            {"model_id": model["model_id"], "evaluation_id": evaluation["evaluation_id"]},
         )
 
         for tmp in (config_path, progress_file):
@@ -1452,6 +1576,9 @@ async def _run_training(job_id: str, config: dict):
                 "message": f"Training failed: {error_text}",
             }
         )
+        append_run_log(job_id, f"ERROR {error_text}")
+        update_run(job_id, status="failed", error_summary=error_text)
+        add_run_event(job_id, "run.failed", error_text, {"error_oom": error_oom})
 
 
 def _check_hf_cache(hf_repo: str) -> bool:
