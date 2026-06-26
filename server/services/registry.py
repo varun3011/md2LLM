@@ -583,6 +583,41 @@ def get_inference_log(log_id: str) -> dict | None:
     return get_record("inference_logs", "log_id", log_id)
 
 
+def model_identity(record: dict) -> str:
+    name = str(record.get("display_name") or record.get("model_id") or "")
+    return name.removesuffix(":latest")
+
+
+def list_models_deduped(limit: int = 100) -> list[dict]:
+    models = list_records("models", limit=limit)
+    grouped = {}
+    for model in models:
+        identity = model_identity(model)
+        existing = grouped.get(identity)
+        if not existing:
+            grouped[identity] = model
+            continue
+
+        existing_tags = set(existing.get("tags") or [])
+        model_tags = set(model.get("tags") or [])
+        if model.get("artifact_path") and not existing.get("artifact_path"):
+            existing["artifact_path"] = model["artifact_path"]
+        if model.get("size_bytes") and not existing.get("size_bytes"):
+            existing["size_bytes"] = model["size_bytes"]
+        if model.get("format") == "ollama" and existing.get("format") != "ollama":
+            existing.update(
+                {
+                    "model_id": model["model_id"],
+                    "display_name": model["display_name"],
+                    "format": model["format"],
+                    "readiness_status": model["readiness_status"],
+                    "deployment_status": model["deployment_status"],
+                }
+            )
+        existing["tags"] = sorted(existing_tags | model_tags)
+    return list(grouped.values())
+
+
 def get_run_events(run_id: str) -> list[dict]:
     init_db()
     with get_connection() as connection:
@@ -601,8 +636,9 @@ def registry_summary() -> dict:
     init_db()
     with get_connection() as connection:
         counts = {}
-        for table in ("datasets", "runs", "models", "evaluations", "inference_logs"):
+        for table in ("datasets", "runs", "evaluations", "inference_logs"):
             counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        counts["models"] = len(list_models_deduped(limit=500))
         recent_failures = connection.execute(
             """
             SELECT * FROM runs

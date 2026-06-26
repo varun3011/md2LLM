@@ -10,6 +10,7 @@ from server.services.registry import (
     get_run_events,
     compare_records,
     diagnose_run,
+    list_models_deduped,
     list_records,
     read_run_log,
     registry_summary,
@@ -69,7 +70,7 @@ async def run_logs(run_id: str, limit: int = 500):
 
 @router.get("/models")
 async def models(limit: int = 100):
-    return {"models": list_records("models", limit=limit)}
+    return {"models": list_models_deduped(limit=limit)}
 
 
 @router.get("/models/{model_id}")

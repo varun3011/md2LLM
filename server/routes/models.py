@@ -1,4 +1,7 @@
 import json
+import re
+import subprocess
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -8,6 +11,12 @@ from server.config import MODELS_DIR, OUTPUT_DIR
 from server.services.registry import create_model
 
 router = APIRouter(prefix="/api")
+
+MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}(:[A-Za-z0-9][A-Za-z0-9_.-]{0,63})?$")
+
+
+def _ollama_base_name(name: str) -> str:
+    return name.removesuffix(":latest")
 
 
 def _custom_paths_file() -> Path:
@@ -24,6 +33,47 @@ def _load_custom_paths() -> list[dict]:
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+
+def _validate_local_gguf_path(raw_path: str) -> Path:
+    try:
+        models_dir = MODELS_DIR.resolve()
+        model_path = Path(raw_path).expanduser().resolve()
+        model_path.relative_to(models_dir)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Only .gguf files inside the project models folder can be imported",
+        ) from exc
+
+    if not model_path.is_file() or model_path.suffix.lower() != ".gguf":
+        raise HTTPException(status_code=400, detail="Choose an existing .gguf model file")
+
+    return model_path
+
+
+def _validate_ollama_model_name(raw_name: str) -> str:
+    model_name = raw_name.strip()
+    if model_name.endswith(":latest"):
+        model_name = model_name.removesuffix(":latest")
+
+    if not MODEL_NAME_PATTERN.match(model_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Model name can only use letters, numbers, dots, dashes, underscores, and one optional tag",
+        )
+
+    return model_name
+
+
+def _cleanup_import_modelfiles() -> None:
+    if not OUTPUT_DIR.exists():
+        return
+    for path in OUTPUT_DIR.glob("ollama_import_*.Modelfile"):
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 async def _fetch_ollama_models() -> tuple[list[dict], bool]:
@@ -78,8 +128,13 @@ async def list_models():
 
     if MODELS_DIR.exists():
         for model_file in MODELS_DIR.glob("*.gguf"):
+            ollama_base_names = {
+                _ollama_base_name(model["name"])
+                for model in models
+                if model["source"] == "ollama"
+            }
             already_in_ollama = any(
-                model["name"] == model_file.stem for model in models if model["source"] == "ollama"
+                name == model_file.stem for name in ollama_base_names
             )
             models.append(
                 {
@@ -110,8 +165,13 @@ async def list_models():
         raw_path = entry.get("path", "")
         path = Path(raw_path)
         if path.exists():
+            ollama_base_names = {
+                _ollama_base_name(model["name"])
+                for model in models
+                if model["source"] == "ollama"
+            }
             already_in_ollama = any(
-                model["name"] == path.stem for model in models if model["source"] == "ollama"
+                name == path.stem for name in ollama_base_names
             )
             models.append(
                 {
@@ -209,6 +269,78 @@ async def add_custom_model(
             "size_mb": round(model_path.stat().st_size / 1024 / 1024, 1),
         },
     }
+
+
+@router.post("/models/import-ollama")
+async def import_model_into_ollama(
+    model_path: str = Form(...),
+    model_name: str = Form(...),
+):
+    """
+    Register a local project .gguf file with Ollama.
+    The path is intentionally limited to models/*.gguf to avoid running
+    Ollama against arbitrary user-provided files.
+    """
+    gguf_path = _validate_local_gguf_path(model_path)
+    ollama_name = _validate_ollama_model_name(model_name)
+
+    modelfile_path = None
+    try:
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        _cleanup_import_modelfiles()
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".Modelfile",
+            prefix="ollama_import_",
+            dir=OUTPUT_DIR,
+            delete=False,
+            encoding="utf-8",
+        ) as modelfile:
+            modelfile.write(f'FROM "{gguf_path}"\n')
+            modelfile_path = Path(modelfile.name)
+
+        result = subprocess.run(
+            ["ollama", "create", ollama_name, "-f", str(modelfile_path)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "Ollama import failed").strip()
+            raise HTTPException(status_code=500, detail=message)
+
+        create_model(
+            model_id=f"ollama_{ollama_name.replace(':', '_')}",
+            display_name=ollama_name if ":" in ollama_name else f"{ollama_name}:latest",
+            base_model_repo=None,
+            training_run_id=None,
+            dataset_id=None,
+            artifact_path=str(gguf_path),
+            model_format="ollama",
+            readiness_status="ready",
+            deployment_status="draft",
+            tags=["ollama", "imported"],
+        )
+
+        return {
+            "message": f"Imported {ollama_name} into Ollama",
+            "model_name": ollama_name if ":" in ollama_name else f"{ollama_name}:latest",
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama command not found. Install Ollama and make sure it is available in PATH.",
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Ollama import timed out") from exc
+    finally:
+        if modelfile_path:
+            try:
+                modelfile_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 @router.delete("/models/remove")

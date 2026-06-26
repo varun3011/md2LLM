@@ -11,6 +11,7 @@ import CompareModels from "./pages/CompareModels"
 import ModelDetail from "./pages/ModelDetail"
 import Registry from "./pages/Registry"
 import RunDetail from "./pages/RunDetail"
+import SetupChecklist from "./pages/SetupChecklist"
 import TrainConfig from "./pages/TrainConfig"
 import TrainRun from "./pages/TrainRun"
 import Layout from "./components/Layout"
@@ -98,6 +99,7 @@ export default function App() {
           <Route path="/train/config" element={<TrainConfig />} />
           <Route path="/train" element={<TrainPlaceholder />} />
           <Route path="/train/run" element={<TrainRun />} />
+          <Route path="/setup" element={<SetupChecklist />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/registry" element={<Registry />} />
           <Route path="/runs/:runId" element={<RunDetail />} />

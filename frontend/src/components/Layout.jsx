@@ -47,6 +47,9 @@ export default function Layout({ currentStep, children, contentClassName = "max-
 
           <div className="flex items-center gap-3">
             <nav className="hidden items-center gap-2 text-sm text-zinc-400 sm:flex">
+              <Link to="/setup" className="rounded-lg px-2 py-1 hover:bg-zinc-900 hover:text-zinc-100">
+                Setup
+              </Link>
               <Link to="/registry" className="rounded-lg px-2 py-1 hover:bg-zinc-900 hover:text-zinc-100">
                 Registry
               </Link>
